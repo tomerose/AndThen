@@ -1,7 +1,8 @@
 # Architecture
 
-Current scope: complete local backend Demo. Identity, sources, cases, interviews,
-followups, research and AI-A/B/C/D are registered modules. The topology and
+Current scope: full-stack Demo — HTTP backend plus the React SPA under `demo/`,
+deployed over HTTPS. Identity, sources, cases, interviews, followups, research,
+zhihu, memory, community and AI-A/B/C/D are registered modules. The topology and
 foundation contracts below remain applicable; see frontend-integration.md,
 ai-api.md and acceptance-matrix.md for the current behavior and evidence boundaries.
 
@@ -108,6 +109,28 @@ Outbox rows share the same lease/fencing columns as `jobs`.
 
 ## 7. Data model
 
+### 7.1 Closed loop → route → table
+
+The product is one loop. This is where each stage of it lives in the system.
+
+| # | Closed-loop stage | Primary routes | Primary tables |
+| --- | --- | --- | --- |
+| 1 | Authorized source displayed | `POST /api/sources/resolve`, `GET /api/stories/{id}` | `sources`, `source_snapshots`, `consents` |
+| 2 | Reader follows the follow-up | `PUT /api/stories/{id}/interest`, `GET /api/me/following` | `interests`, `interest_reasons` |
+| 3 | Revisit suitability judged | `POST /api/sources/{id}/analyze`, `GET /api/sources/{id}/analysis` | `ai_runs` |
+| 4 | Invitation recorded (human-sent) | `POST /api/cases/{id}/invitations` | `followup_cases`, `invitations` |
+| 5 | Original author verified | `POST /api/sources/{id}/author-verifications` | `author_verifications` |
+| 6 | AI interview | `POST /api/cases/{id}/interviews`, `POST /api/interviews/{id}/messages` | `interview_sessions`, `messages` |
+| 7 | Author confirms item by item | `POST /api/drafts/{id}/confirm` | `followup_versions` |
+| 8 | Follow-up published | `POST /api/drafts/{id}/publish` | `followup_versions`, `outbox` |
+| 9 | Followers notified | `GET /api/me/notifications`, `POST /api/notifications/{id}/read` | `notifications` |
+
+Stage 4 never sends anything itself — it records that a human sent an invitation.
+Stage 8 freezes its recipient list inside the publish transaction, so a
+withdrawal can never be followed by a stale notification.
+
+### 7.2 Physical tables
+
 22 tables. The PRD §15.1 logical entities map 1:1 onto physical tables; see
 `docs/contracts.md` §6 for the full map and the foundation-only additions
 (`sessions`, `login_tokens`, `jobs`, `outbox`, `idempotency_keys`,
@@ -146,8 +169,10 @@ fabricate output.
 
 ## 9. Non-goals (explicit)
 
-- No frontend, no server-rendered pages.
-- No dependency on any third-party platform API; search/import adapters are a
-  later module.
-- No vector store, no model training, no multi-agent orchestration.
+- Frontend scope is the standalone `demo/` SPA; no server-rendered pages.
+- 知乎 official API is a **required** dependency: search, OAuth identity, author
+  content and comments. There is no crawler fallback — when an official call is
+  unavailable the product degrades explicitly instead of fabricating data.
+- No model training and no multi-agent orchestration. A vector-backed author
+  memory service is integrated (see ai-api.md).
 - No P1/P2 PRD features (share images, hot-list hints, personal history scan).
